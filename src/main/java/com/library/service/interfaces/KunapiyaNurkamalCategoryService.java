@@ -2,16 +2,15 @@ package com.library.service.interfaces;
 
 import com.library.dto.request.KunapiyaNurkamalCategoryRequest;
 import com.library.dto.response.KunapiyaNurkamalCategoryResponse;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+
+import java.util.List;
 
 public interface KunapiyaNurkamalCategoryService {
-
     KunapiyaNurkamalCategoryResponse createCategory(KunapiyaNurkamalCategoryRequest request);
 
     KunapiyaNurkamalCategoryResponse getCategoryById(Long id);
 
-    Page<KunapiyaNurkamalCategoryResponse> getAllCategories(Pageable pageable);
+    List<KunapiyaNurkamalCategoryResponse> getAllCategories();
 
     KunapiyaNurkamalCategoryResponse updateCategory(Long id, KunapiyaNurkamalCategoryRequest request);
 
