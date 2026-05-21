@@ -18,5 +18,5 @@ public interface KunapiyaNurkamalBorrowRecordRepository extends JpaRepository<Ku
     @Query("SELECT b FROM KunapiyaNurkamalBorrowRecord b WHERE b.dueDate < :today AND b.status = 'BORROWED'")
     List<KunapiyaNurkamalBorrowRecord> findOverdueRecords(LocalDate today);
 
-    boolean existsByUserIdAndBookIdAndStatus(Long userId, Long bookId, KunapiyaNurkamalBorrowRecord.BorrowStatus status);
+    boolean existsByUserIdAndBookIdAndStatusNot(Long userId, Long bookId, KunapiyaNurkamalBorrowRecord.BorrowStatus status);
 }
