@@ -20,7 +20,7 @@ public class KunapiyaNurkamalFileController {
 
     private final KunapiyaNurkamalFileService fileService;
 
-    @PostMapping("/upload")
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Upload a file", description = "Uploads a file to the server")
     public ResponseEntity<String> uploadFile(
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file) {
