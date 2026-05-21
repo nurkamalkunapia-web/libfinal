@@ -18,12 +18,10 @@ public interface KunapiyaNurkamalBookRepository extends JpaRepository<KunapiyaNu
     boolean existsByIsbn(String isbn);
 
     @Query("SELECT b FROM KunapiyaNurkamalBook b WHERE " +
-            "(:title IS NULL OR LOWER(b.title) LIKE LOWER(CONCAT('%', :title, '%'))) AND " +
+            "(:title IS NULL OR b.title LIKE %:title%) AND " +
             "(:authorId IS NULL OR b.author.id = :authorId) AND " +
             "(:categoryId IS NULL OR b.category.id = :categoryId) AND " +
-            "(:available IS NULL OR " +
-            "  ( :available = true AND b.availableCopies > 0 ) OR " +
-            "  ( :available = false AND b.availableCopies = 0 ))")
+            "(:available IS NULL OR (:available = true AND b.availableCopies > 0) OR (:available = false AND b.availableCopies = 0))")
     Page<KunapiyaNurkamalBook> findWithFilters(
             @Param("title") String title,
             @Param("authorId") Long authorId,
