@@ -2,26 +2,22 @@ package com.library.service.impl;
 
 import com.library.dto.request.KunapiyaNurkamalBorrowRequest;
 import com.library.dto.response.KunapiyaNurkamalBorrowResponse;
-import com.library.entity.KunapiyaNurkamalBook;
-import com.library.entity.KunapiyaNurkamalBorrowRecord;
-import com.library.entity.KunapiyaNurkamalUser;
-import com.library.exception.KunapiyaNurkamalDuplicateResourceException;
+import com.library.entity.*;
 import com.library.exception.KunapiyaNurkamalResourceNotFoundException;
-import com.library.mapper.KunapiyaNurkamalMapper;
-import com.library.repository.KunapiyaNurkamalBookRepository;
-import com.library.repository.KunapiyaNurkamalBorrowRecordRepository;
+import com.library.repository.*;
 import com.library.service.interfaces.KunapiyaNurkamalAsyncService;
 import com.library.service.interfaces.KunapiyaNurkamalBorrowService;
-import com.library.service.interfaces.KunapiyaNurkamalUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -31,28 +27,32 @@ public class KunapiyaNurkamalBorrowServiceImpl implements KunapiyaNurkamalBorrow
 
     private final KunapiyaNurkamalBorrowRecordRepository borrowRecordRepository;
     private final KunapiyaNurkamalBookRepository bookRepository;
-    private final KunapiyaNurkamalUserService userService;
+    private final KunapiyaNurkamalUserRepository userRepository;
+    private final KunapiyaNurkamalFineRepository fineRepository;
     private final KunapiyaNurkamalAsyncService asyncService;
-    private final KunapiyaNurkamalMapper mapper;
+    private final KunapiyaNurkamalUserServiceImpl userService;
 
     @Override
     public KunapiyaNurkamalBorrowResponse borrowBook(KunapiyaNurkamalBorrowRequest request) {
-        KunapiyaNurkamalUser currentUser = userService.getCurrentUser();
+        log.info("Processing borrow request for book id: {}", request.getBookId());
 
+        KunapiyaNurkamalUser user = userService.getCurrentUser();
         KunapiyaNurkamalBook book = bookRepository.findById(request.getBookId())
                 .orElseThrow(() -> new KunapiyaNurkamalResourceNotFoundException("Book not found with id: " + request.getBookId()));
 
         if (book.getAvailableCopies() <= 0) {
-            throw new KunapiyaNurkamalResourceNotFoundException("No available copies for this book");
+            throw new RuntimeException("No available copies for book: " + book.getTitle());
         }
 
-        if (borrowRecordRepository.existsByUserIdAndBookIdAndStatus(
-                currentUser.getId(), book.getId(), KunapiyaNurkamalBorrowRecord.BorrowStatus.BORROWED)) {
-            throw new KunapiyaNurkamalDuplicateResourceException("You already borrowed this book");
+        boolean alreadyBorrowed = borrowRecordRepository.existsByUserIdAndBookIdAndStatusNot(
+                user.getId(), book.getId(), KunapiyaNurkamalBorrowRecord.BorrowStatus.RETURNED);
+
+        if (alreadyBorrowed) {
+            throw new RuntimeException("You have already borrowed this book: " + book.getTitle());
         }
 
-        KunapiyaNurkamalBorrowRecord borrowRecord = KunapiyaNurkamalBorrowRecord.builder()
-                .user(currentUser)
+        KunapiyaNurkamalBorrowRecord record = KunapiyaNurkamalBorrowRecord.builder()
+                .user(user)
                 .book(book)
                 .borrowDate(LocalDate.now())
                 .dueDate(request.getDueDate())
@@ -62,18 +62,20 @@ public class KunapiyaNurkamalBorrowServiceImpl implements KunapiyaNurkamalBorrow
         book.setAvailableCopies(book.getAvailableCopies() - 1);
         bookRepository.save(book);
 
-        KunapiyaNurkamalBorrowRecord saved = borrowRecordRepository.save(borrowRecord);
+        KunapiyaNurkamalBorrowRecord saved = borrowRecordRepository.save(record);
+        log.info("Book borrowed successfully: {} by {}", book.getTitle(), user.getUsername());
 
-        asyncService.sendBorrowNotification(currentUser.getUsername(), book.getTitle());
+        asyncService.sendBorrowNotification(user.getUsername(), book.getTitle());
 
-        log.info("Book borrowed: {} by user {}", book.getTitle(), currentUser.getUsername());
-        return mapper.toBorrowResponse(saved);
+        return buildResponse(saved);
     }
 
     @Override
     public KunapiyaNurkamalBorrowResponse returnBook(Long borrowRecordId) {
+        log.info("Processing return for borrow record id: {}", borrowRecordId);
+
         KunapiyaNurkamalBorrowRecord record = borrowRecordRepository.findById(borrowRecordId)
-                .orElseThrow(() -> new KunapiyaNurkamalResourceNotFoundException("Borrow record not found"));
+                .orElseThrow(() -> new KunapiyaNurkamalResourceNotFoundException("Borrow record not found with id: " + borrowRecordId));
 
         if (record.getStatus() == KunapiyaNurkamalBorrowRecord.BorrowStatus.RETURNED) {
             throw new RuntimeException("Book already returned");
@@ -86,27 +88,69 @@ public class KunapiyaNurkamalBorrowServiceImpl implements KunapiyaNurkamalBorrow
         book.setAvailableCopies(book.getAvailableCopies() + 1);
         bookRepository.save(book);
 
-        KunapiyaNurkamalBorrowRecord updated = borrowRecordRepository.save(record);
-        log.info("Book returned: {}", book.getTitle());
-        return mapper.toBorrowResponse(updated);
+        if (record.getDueDate().isBefore(LocalDate.now())) {
+            long daysOverdue = ChronoUnit.DAYS.between(record.getDueDate(), LocalDate.now());
+            BigDecimal fineAmount = BigDecimal.valueOf(daysOverdue * 100);
+
+            KunapiyaNurkamalFine fine = KunapiyaNurkamalFine.builder()
+                    .borrowRecord(record)
+                    .amount(fineAmount)
+                    .paid(false)
+                    .build();
+            fineRepository.save(fine);
+            log.warn("Fine applied for overdue book: {} - Amount: {} tenge", book.getTitle(), fineAmount);
+        }
+
+        KunapiyaNurkamalBorrowRecord saved = borrowRecordRepository.save(record);
+        log.info("Book returned successfully: {}", book.getTitle());
+
+        return buildResponse(saved);
     }
 
     @Override
-    @Transactional(readOnly = true)
     public Page<KunapiyaNurkamalBorrowResponse> getAllBorrowRecords(Pageable pageable) {
-        return borrowRecordRepository.findAll(pageable).map(mapper::toBorrowResponse);
+        log.debug("Fetching all borrow records");
+        return borrowRecordRepository.findAll(pageable).map(this::buildResponse);
     }
 
     @Override
-    @Transactional(readOnly = true)
     public Page<KunapiyaNurkamalBorrowResponse> getUserBorrowRecords(Long userId, Pageable pageable) {
-        return borrowRecordRepository.findByUserId(userId, pageable).map(mapper::toBorrowResponse);
+        log.debug("Fetching borrow records for user id: {}", userId);
+
+        if (!userRepository.existsById(userId)) {
+            throw new KunapiyaNurkamalResourceNotFoundException("User not found with id: " + userId);
+        }
+
+        return borrowRecordRepository.findByUserId(userId, pageable).map(this::buildResponse);
     }
 
-    @Scheduled(cron = "0 0 * * * *") // Каждый час
     @Override
     public void checkOverdueBorrows() {
-        log.info("Scheduled task: Checking overdue borrows...");
-        asyncService.checkOverdueBorrowsAsync().join();
+        log.info("Checking for overdue borrows");
+
+        List<KunapiyaNurkamalBorrowRecord> overdue = borrowRecordRepository.findOverdueRecords(LocalDate.now());
+
+        for (KunapiyaNurkamalBorrowRecord record : overdue) {
+            if (record.getStatus() == KunapiyaNurkamalBorrowRecord.BorrowStatus.BORROWED) {
+                record.setStatus(KunapiyaNurkamalBorrowRecord.BorrowStatus.OVERDUE);
+                borrowRecordRepository.save(record);
+                log.warn("Overdue book detected: {} borrowed by {}",
+                        record.getBook().getTitle(), record.getUser().getUsername());
+            }
+        }
+    }
+
+    private KunapiyaNurkamalBorrowResponse buildResponse(KunapiyaNurkamalBorrowRecord record) {
+        return KunapiyaNurkamalBorrowResponse.builder()
+                .id(record.getId())
+                .username(record.getUser().getUsername())
+                .bookTitle(record.getBook().getTitle())
+                .bookIsbn(record.getBook().getIsbn())
+                .borrowDate(record.getBorrowDate())
+                .dueDate(record.getDueDate())
+                .returnDate(record.getReturnDate())
+                .status(record.getStatus().name())
+                .createdAt(record.getCreatedAt())
+                .build();
     }
 }
