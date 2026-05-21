@@ -1,5 +1,6 @@
 package com.library.service.impl;
 
+import com.library.exception.KunapiyaNurkamalResourceNotFoundException;
 import com.library.service.interfaces.KunapiyaNurkamalFileService;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
@@ -68,7 +69,7 @@ public class KunapiyaNurkamalFileServiceImpl implements KunapiyaNurkamalFileServ
             if (resource.exists() && resource.isReadable()) {
                 return resource;
             } else {
-                throw new RuntimeException("File not found: " + filename);
+                throw new KunapiyaNurkamalResourceNotFoundException("File not found: " + filename);
             }
         } catch (IOException e) {
             log.error("File download failed: {}", e.getMessage());
