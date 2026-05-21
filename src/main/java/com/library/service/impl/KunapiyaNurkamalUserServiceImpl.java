@@ -5,10 +5,12 @@ import com.library.dto.response.KunapiyaNurkamalAuthResponse;
 import com.library.dto.response.KunapiyaNurkamalBorrowResponse;
 import com.library.entity.KunapiyaNurkamalUser;
 import com.library.exception.KunapiyaNurkamalDuplicateResourceException;
+import com.library.exception.KunapiyaNurkamalResourceNotFoundException;
 import com.library.repository.KunapiyaNurkamalBorrowRecordRepository;
 import com.library.repository.KunapiyaNurkamalUserRepository;
 import com.library.security.jwt.KunapiyaNurkamalJwtUtil;
 import com.library.service.interfaces.KunapiyaNurkamalUserService;
+import org.springframework.security.authentication.BadCredentialsException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -74,10 +76,10 @@ public class KunapiyaNurkamalUserServiceImpl implements KunapiyaNurkamalUserServ
         log.info("Login attempt for user: {}", request.getUsername());
 
         KunapiyaNurkamalUser user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new RuntimeException("Invalid username or password"));
+                .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new RuntimeException("Invalid username or password");
+            throw new BadCredentialsException("Invalid username or password");
         }
 
         UserDetails userDetails = org.springframework.security.core.userdetails.User
@@ -101,7 +103,7 @@ public class KunapiyaNurkamalUserServiceImpl implements KunapiyaNurkamalUserServ
     public KunapiyaNurkamalUser getCurrentUser() {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("Current user not found"));
+                .orElseThrow(() -> new KunapiyaNurkamalResourceNotFoundException("Current user not found"));
     }
 
     @Override
