@@ -7,13 +7,22 @@ import org.springframework.data.domain.Pageable;
 
 public interface KunapiyaNurkamalBorrowService {
 
-    KunapiyaNurkamalBorrowResponse borrowBook(KunapiyaNurkamalBorrowRequest request);
+    KunapiyaNurkamalBorrowResponse borrowBook(
+            KunapiyaNurkamalBorrowRequest request
+    );
 
-    KunapiyaNurkamalBorrowResponse returnBook(Long borrowRecordId);
+    KunapiyaNurkamalBorrowResponse returnBook(
+            Long borrowRecordId
+    );
 
-    Page<KunapiyaNurkamalBorrowResponse> getAllBorrowRecords(Pageable pageable);
+    Page<KunapiyaNurkamalBorrowResponse> getAllBorrowRecords(
+            Pageable pageable
+    );
 
-    Page<KunapiyaNurkamalBorrowResponse> getUserBorrowRecords(Long userId, Pageable pageable);
+    Page<KunapiyaNurkamalBorrowResponse> getUserBorrowRecords(
+            Long userId,
+            Pageable pageable
+    );
 
     void checkOverdueBorrows();
 }
